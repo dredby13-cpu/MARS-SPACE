@@ -1,35 +1,53 @@
-// OWNER: Persona A (Personal · Hidro · Hub) — see docs/COLLABORATION.md
-//
-// Saves the last 7 days of NASA DONKI space weather (CME, GST, SEP) as the OFFLINE FALLBACK
-// for the live panel in Personal: src/data/real/donki_recent.json
-// (The game calls api.nasa.gov live when it can; this file is used only without network.)
-//
-// Usage: npm run data:donki            (uses NASA_API_KEY from the environment, else DEMO_KEY)
-import { writeFileSync, mkdirSync } from 'node:fs';
+// Legacy seven-day DONKI archive. The game does not read this file or make these requests at runtime.
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createSpaceWeatherFeed, DONKI_BASE } from '../src/rooms/personal/spaceWeatherLive.js';
 
-const apiKey = process.env.NASA_API_KEY ?? 'DEMO_KEY';
-const feed = createSpaceWeatherFeed({ apiKey, days: 7 });
-const state = await feed.refresh();
-if (state.status !== 'live') throw new Error(`DONKI request failed: ${state.error}`);
+const API = 'https://ccmc.gsfc.nasa.gov/DONKI/WS/get';
+const end = new Date();
+const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+const iso = (date) => date.toISOString().slice(0, 10);
+const range = { start: iso(start), end: iso(end) };
 
-const out = {
-  _about: 'Embedded REAL snapshot (offline fallback, not live). Regenerate with `npm run data:donki`.',
+async function get(type) {
+  const url = new URL(`${API}/${type}`);
+  url.searchParams.set('startDate', range.start);
+  url.searchParams.set('endDate', range.end);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`DONKI ${type}: HTTP ${response.status}`);
+  const data = await response.json();
+  if (!Array.isArray(data)) throw new Error(`DONKI ${type} returned a non-array response`);
+  return data;
+}
+
+const [cme, gst, sep] = await Promise.all(['CME', 'GST', 'SEP'].map(get));
+const speeds = cme.flatMap((event) => event.cmeAnalyses ?? [])
+  .map((analysis) => Number(analysis.speed))
+  .filter((speed) => Number.isFinite(speed) && speed > 0);
+const kpValues = gst.flatMap((event) => event.allKpIndex ?? [])
+  .map((item) => Number(item.kpIndex))
+  .filter(Number.isFinite);
+const output = {
+  _about: 'Legacy seven-day DONKI archive. Personal now uses escenarios_nasa.json instead; regenerate with `npm run data:donki`.',
   source: {
     institution: 'NASA Community Coordinated Modeling Center (CCMC)',
-    product: 'DONKI — Space Weather Database Of Notifications, Knowledge, Information (via api.nasa.gov)',
-    url: 'https://api.nasa.gov/',
-    endpoints: ['CME', 'GST', 'SEP'].map((t) => `${DONKI_BASE}${t}`),
-    retrievedAt: new Date().toISOString().slice(0, 10),
+    product: 'DONKI — Space Weather Database Of Notifications, Knowledge, Information',
+    url: 'https://ccmc.gsfc.nasa.gov/DONKI/',
+    endpoints: ['CME', 'GST', 'SEP'].map((type) => `${API}/${type}`),
+    retrievedAt: iso(new Date()),
   },
-  range: state.range,
-  summary: state.summary,
+  range,
+  summary: {
+    cmeCount: cme.length,
+    fastestCmeKms: speeds.length ? Math.round(Math.max(...speeds)) : null,
+    gstCount: gst.length,
+    maxKp: kpValues.length ? Math.max(...kpValues) : null,
+    sepCount: sep.length,
+  },
 };
 
-const dir = new URL('../src/data/real/', import.meta.url);
-mkdirSync(fileURLToPath(dir), { recursive: true });
-const target = fileURLToPath(new URL('donki_recent.json', dir));
-writeFileSync(target, JSON.stringify(out, null, 2) + '\n');
-console.log(`Wrote ${target}`);
-console.log(`${state.range?.start} → ${state.range?.end}:`, JSON.stringify(state.summary));
+const directory = fileURLToPath(new URL('../src/data/real/', import.meta.url));
+mkdirSync(directory, { recursive: true });
+const target = fileURLToPath(new URL('../src/data/real/donki_recent.json', import.meta.url));
+writeFileSync(target, `${JSON.stringify(output, null, 2)}\n`);
+console.log(`Saved legacy DONKI archive to ${target}`);
+console.log(`${range.start} → ${range.end}: ${JSON.stringify(output.summary)}`);

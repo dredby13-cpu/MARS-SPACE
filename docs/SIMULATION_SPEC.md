@@ -143,7 +143,9 @@ Generation: clear day ≈ **31.2 kWh** (12.0 RTG + ≈ 19.5 solar with the track
 
 Events: `solar:dustChanged { dustFactor }` (when the dust % changes by 1), `solar:cleaned { by: 'shield' | 'devil', gained, kwh }`, `solar:rejected { reason }`. Honest note: at the real calm rate a 7-day run loses only ≈ 2 %; the storm is what makes dust matter.
 
-Presentation: on `solar:cleaned { by: 'shield' }` the solar window plays a blue shield wave that sweeps the panel columns one after another (12 panels in 2 rows of 6; visual only, the peak stays `solarKw`) (`SolarPanelShieldWave`, +1 draw call), and the shown dust fades out (`balance.cleanFx` in `energy.json`, real seconds). The former Rover 2 cleaning rover was removed (too confusing for players).
+Presentation: on `solar:cleaned { by: 'shield' }` the solar window plays a blue shield wave that sweeps the panel columns one after another (12 panels in 2 rows of 6; visual only, the peak stays `solarKw`) (`SolarPanelShieldWave`, +1 draw call), and the shown dust fades out (`balance.cleanFx` in `energy.json`, real seconds).
+
+The separate MARS-CLEANER rover is dispatched from the wall console beside the solar window. A sortie may select at most `balance.cleaner.maxPanelsPerTrip` panels (3); selecting more is rejected. It drives on the visible service rails at `balance.cleaner.driveMPerGameMinute` (0.8 m/game minute), chooses the shorter north/south crossover when changing rows, and stops at a safe approach point `approachOffsetM` from each selected panel. It emits `cleaner:panelCleaned { panelIndex, recovered }` and visibly blows a short compressed-air burst at that panel. After the selected panels it returns to its dock and recharges through `repairBay`; another sortie is rejected until charging is complete. The `cleaner:recharge {}` intent sends an active rover back to the dock before its current targets are complete. Its wheels, rails, and movement are presentation; the rover's state advances only with game ticks, so it waits during training or when simulation speed is 0.
 
 ### 2.6 Sun tracker (implemented, `src/systems/SolarTracker.js`, `balance.tracker` in `energy.json`)
 
@@ -430,7 +432,7 @@ Events: `spaceWeather:alert { kind: 'cme' | 'flare', speedKms?, etaHours? }`, `s
 
 ### 6.5 Real-data grounding (Person A rooms)
 
-Real data are embedded as **static, dated snapshots** and labelled in-world as "no en vivo" (exception: DONKI in Personal is live when reachable and says so) (`src/data/real/*.json`, listed on the hub "Fuentes científicas" board).
+Real data are embedded as **static, dated snapshots** and attributed in-world (`src/data/real/*.json`, listed on the hub "Fuentes científicas" board). The Personal DONKI historical replay is offline, presentation-only, and does not feed simulation incidents or radiation.
 
 | Data | Source | Game use | Rule |
 | :-- | :-- | :-- | :-- |
@@ -440,10 +442,10 @@ Real data are embedded as **static, dated snapshots** and labelled in-world as "
 | Crop growth times (lettuce 21–28 d, tomato 50–90 d, …) | CSA food-production toolkit | Hidroponía guide; the game crop **is lettuce** and its growth is **time-compressed** (48 game hours), labelled so in-world | Do not present the compressed time as real |
 | Crew diet 1900–3200 kcal/day | CSA | Validates `food.consumptionPerHour` (≈ 2500 kcal/day) | Keep the value inside the range |
 | Plants produce O₂ and recycle CO₂; APH LEDs white/red/blue/green | CSA | Facts on the Hidroponía guide | Not yet a gas-exchange mechanic |
-| DONKI CME / GST / SEP, last 7 days | NASA CCMC DONKI via api.nasa.gov | Personal «El Sol ahora» (`rooms/personal/spaceWeatherLive.js`, presentation only). **Live** when reachable, otherwise the dated snapshot `real/donki_recent.json` | **Never feeds the simulation.** «EN VIVO» only after a successful request |
+| DONKI CME / GST / SEP / FLR historical events | NASA CCMC DONKI API | Personal «Historial del Sol» (`rooms/personal/spaceWeatherLive.js`, replaying `real/escenarios_nasa.json` by UTC timestamp); manual refresh command: `npm run data:escenarios` | **Never feeds the simulation.** The app makes no DONKI requests during play; the panel identifies the historical date and offers keys 1/2/3 |
 | Spaceflight health studies OSD-924, OSD-343, OSD-812 (metadata) | NASA OSDR study search | Personal «Salud del astronauta», with accession and link | Kid-level summaries must not claim more than the study description |
 
-Refresh: `npm run data:radlab -- YYYY-MM-DD` (Node, no CORS), `npm run data:osdr`, `npm run data:donki` (offline fallback), and edit `csa_food.json` by hand. Judge-facing summary: `docs/DATA_SOURCES.md`. The ISS DosTel data has no coverage in 2024, so 2023-01-01 is used for both series.
+Refresh: `npm run data:radlab -- YYYY-MM-DD` (Node, no CORS), `npm run data:osdr`, and `npm run data:escenarios` (manual DONKI history capture); edit `csa_food.json` by hand. `npm run data:donki` is a legacy seven-day archive and does not feed the panel. Judge-facing summary: `docs/DATA_SOURCES.md`. The ISS DosTel data has no coverage in 2024, so 2023-01-01 is used for both series.
 
 ### 6.6 Telecom receiver power supply (hub electronics bench)
 
@@ -529,7 +531,7 @@ Ver **`AGENTS.md` §4.2** para el contrato de eventos y payloads (baseline + pro
 | Hidroponía · Agricultura | Water tank gauge; kcal counter + ration locker; crop lights (growing / ready / spoiling); harvest rack; `valve_recycler` |
 | Telecomunicaciones | N: window + console (signal/alignment/azimuth/motor panel and left/right turn controls). W: communications distribution panel with uplink/signal status. Pending: message printer |
 | Sala central · Herramientas (hub) | **Training bench** (§9.4), tool wall, spares counter, component status board |
-| Personal | Storm-shelter alcove (bunk walled with water tanks; only the alcove protects), locker, dosimeter, «El Sol ahora» and «Salud del astronauta» panels |
+| Personal | Storm-shelter alcove (bunk walled with water tanks; only the alcove protects), locker, dosimeter, local NASA DONKI replay «Historial del Sol» and «Salud del astronauta» panels |
 | Corridors | Emergency lights, hull seal panels (leak points), alarm beacons |
 | Wrist | Biomonitor on the non-dominant hand |
 

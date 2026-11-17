@@ -85,6 +85,20 @@
     "autoKw": 0.05,
     "stowDustFactor": 0.25
   },
+  "cleaner": {
+    "_about": "MARS-CLEANER autonomy and presentation balance. Each sortie is limited to three panels; the rover approaches from the west and returns to its dock to recharge.",
+    "batteryWh": 2400,
+    "dockKw": 0.3,
+    "driveW": 150,
+    "driveMPerGameMinute": 0.8,
+    "cleanW": 280,
+    "cleanTimeS": 8,
+    "defaultPanels": [2, 3, 4],
+    "approachOffsetM": 1.4,
+    "routeEndPaddingM": 1.5,
+    "maxPanelsPerTrip": 3,
+    "sprayDurationS": 0.8
+  },
   "cleanFx": {
     "_about": "Presentation only: electrodynamic-shield wave seen through the solar window after LIMPIAR (real seconds). Panel i starts stepS after panel i-1; the shown dust fades at fadeSoilPerS.",
     "durationS": 2.4,

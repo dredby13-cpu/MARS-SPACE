@@ -64,12 +64,12 @@ Parámetros de desarrollo (combinables con `&`):
 
 ### Datos reales (NASA / CSA)
 
-El juego usa datos reales **embebidos como registros con fecha**; solo el clima espacial (DONKI) se consulta **en vivo** si hay conexión. Detalle para el jurado: `docs/DATA_SOURCES.md`. Se listan dentro del juego en el panel «Fuentes científicas» de la Sala central.
+El juego usa datos reales **embebidos como registros con fecha**; durante la partida no consulta ninguna API. El historial de NASA DONKI cambia con el reloj del juego: calmado (01/01/2020), moderado (01/01/2024) y extremo (10–12/05/2024). Avanza automáticamente en los días 1–2, 3–4 y 5–7; las teclas **1/2/3** permiten elegir otro escenario hasta la siguiente etapa. Esta reproducción es visual y no altera la simulación. Detalle: `docs/DATA_SOURCES.md`; las fuentes se listan dentro del juego en «Fuentes científicas».
 
 | Datos | Fuente | Dónde se ven | Cómo actualizar |
 | :-- | :-- | :-- | :-- |
 | Radiación en la superficie de Marte (MSL RAD, Curiosity) e ISS, 24 h del 01/01/2023 | [NASA OSDR RadLab](https://visualization.osdr.nasa.gov/radlab/gui/data-api/) | Dosímetro (Personal) | `npm run data:radlab -- AAAA-MM-DD` |
-| Clima espacial: CME, tormentas geomagnéticas y de partículas, últimos 7 días | [NASA DONKI (api.nasa.gov)](https://api.nasa.gov/) | «El Sol ahora» (Personal): **EN VIVO** si hay red; si no, el registro con fecha | `npm run data:donki` (registro de respaldo) |
+| Historial espacial: 3 escenarios DONKI con CME, GST, SEP y llamaradas | [NASA CCMC DONKI](https://ccmc.gsfc.nasa.gov/DONKI/) | «Historial del Sol» (Personal), reproducción local con fecha UTC | `npm run data:escenarios` (descarga manual; no se ejecuta durante la partida) |
 | Estudios reales de salud en el espacio (OSD-924, OSD-343, OSD-812) | [NASA OSDR](https://osdr.nasa.gov/bio/repo/) | «Salud del astronauta» (Personal) | `npm run data:osdr` |
 | Distancia real Tierra–Marte y retraso de los mensajes (11 min al inicio) | [JPL Approximate Positions](https://ssd.jpl.nasa.gov/planets/approx_pos.html), comprobado con JPL Horizons | Telecom (distribuidor de red) y registro de mensajes | a mano (`orbits.json`) |
 | Tormenta solar real del 20/05/2024 (Curiosity RAD) y límites de radiación NASA-STD-3001 | [NASA OSDR RadLab](https://visualization.osdr.nasa.gov/radlab/) | Dosímetro y refugio (Personal) | `npm run data:radlab:sep` |
@@ -79,7 +79,7 @@ El juego usa datos reales **embebidos como registros con fecha**; solo el clima 
 | Quinua y espirulina para soporte vital (CELSS): proteína, O₂ | [NASA NTRS](https://ntrs.nasa.gov/citations/19940015664) | Guía de cultivos y biorreactor (Hidroponía) | Editar `src/data/real/bioregen_crops.json` |
 | Ciclos de cultivo, dieta de la tripulación, hábitats de plantas | [CSA – Food production](https://www.asc-csa.gc.ca/eng/youth-educators/toolkits/food-production/) | Guía de cultivos y bastidor (Hidroponía) | Editar `src/data/real/csa_food.json` |
 
-**Por qué no se consultan en vivo:** la API de RadLab no envía la cabecera CORS, así que el navegador del Quest no puede llamarla. Un script de Node descarga los datos en tu PC y el JSON se versiona (igual con OSDR). DONKI sí permite CORS: el navegador lo llama con `DEMO_KEY`, o con tu clave gratuita de https://api.nasa.gov/ en `.env` (`VITE_NASA_API_KEY=...`, ya ignorado por git).
+Los paneles leen los archivos JSON locales. El comando `npm run data:escenarios` solo consulta DONKI cuando se ejecuta manualmente para regenerar el conjunto; el runtime WebXR no realiza peticiones ni requiere una clave API.
 
 ### Testing en Quest 3
 

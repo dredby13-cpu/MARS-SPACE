@@ -660,8 +660,9 @@ export function buildRoverWorld(scene, game, camera, dolly, layout) {
       roverGroup.position.set(worldX, terrainY, worldZ);
       roverGroup.rotation.y = roverModelYaw(r.heading);
 
-      // Mastcam camera world transform
-      fpvCamAnchor.getWorldPosition(roverCamera.position);
+      // Keep the rover camera a short distance above and behind the vehicle.
+      roverCamera.position.set(0, 1.4, -5.5);
+      roverGroup.localToWorld(roverCamera.position);
       roverCamera.rotation.set(0, roverCameraYaw(r.heading), 0);
 
       // In FPV mode, move dolly to rover camera

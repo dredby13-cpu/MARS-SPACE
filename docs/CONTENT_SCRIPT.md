@@ -61,6 +61,8 @@ The day 6 and 7 briefings mention the CME only if the day-4 alert was delivered;
 
 ### 3.3 Space weather (DONKI, spec §6.3)
 
+Personal «Historial del Sol» is a local, presentation-only replay of `src/data/real/escenarios_nasa.json`. It starts calm, advances to moderate on mission day 3 and extreme on day 5; keys 1/2/3 select a scenario until the next automatic stage. The panel and Info sheet show cumulative events at the replay's UTC timestamp, the actual historical date and NASA CCMC DONKI attribution. This does not emit incidents or affect radiation simulation.
+
 | Key | Text |
 | :-- | :-- |
 | `comms.space.cme.alert` | "Alerta: CME detectada a {speedKms} km/s. Distancia a Marte ≈ {distanceMkm} millones de km ⇒ llegada en ≈ {etaHours} h (día 7, 12:00)." |
@@ -115,7 +117,7 @@ Each mission has `stepN` keys for multi-step hints (e.g. `tutorial.t3.step2` = "
 | Keys | File | Content |
 | :-- | :-- | :-- |
 | `personal.dosimeter.*` | `strings/es/personal.json` | Dosimeter: rate, shift dose, ISS comparison, chart label, context, **source + "no en vivo"** |
-| `personal.sun.*` | `strings/es/personal.json` | «El Sol ahora» (DONKI): `live` / `snapshot` / `unavailable` status line, CME count, fastest CME, storms, kid explanation, source |
+| `personal.sun.*` | `strings/es/personal.json` | «Historial del Sol» (DONKI): historical date, four event counts, latest/next event, source, UTC time, and 1/2/3 scenario selection |
 | `personal.health.*` | `strings/es/personal.json` | «Salud del astronauta» (OSDR): title, `where.<topic>`, one kid summary per study (`osd924`, `osd343`, `osd812`), source, `no_data` |
 | `hydro.guide.*`, `real.crop.*` | `strings/es/hydro.json` | Crop guide (CSA + NASA NTRS: real days vs game hours, quinoa, spirulina), crop names |
 | `hydro.tray.*`, `hydro.btn.*`, `hydro.hose.*`, `hydro.bio.*`, `ui.log.food_spoiled.overwatered` | `strings/es/hydro.json` | Tray panels (seed, growth, moisture, dry/flooded/dark warnings), buttons, hose instructions, bioreactor panel, rot log |

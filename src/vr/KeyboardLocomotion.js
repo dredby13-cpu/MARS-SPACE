@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-const MOVE_SPEED = 10.8; // m/s
+const MOVE_SPEED = 10.0; // m/s
 const TURN_SPEED = THREE.MathUtils.degToRad(100); // rad/s, desktop smooth turn
 const SNAP_ANGLE = THREE.MathUtils.degToRad(30); // XR: snap turn for comfort
 

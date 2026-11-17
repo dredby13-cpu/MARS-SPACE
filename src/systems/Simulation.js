@@ -12,6 +12,8 @@ import { Telecom } from './Telecom.js';
 import { Radiation } from './Radiation.js';
 import { Electronics } from './Electronics.js';
 import { Rover } from './Rover.js';
+import { MaintenanceRover } from './MaintenanceRover.js';
+import { MissionDirector } from './MissionDirector.js';
 import { Comms } from './Comms.js';
 import { SolarTracker } from './SolarTracker.js';
 import { Toolbelt } from './Toolbelt.js';
@@ -61,6 +63,10 @@ export class Simulation {
     this.rover = b.rover ? new Rover(b.rover, bus, this.resources) : null;
     // Hand-tool repairs of scripted faults and hull leaks (repair:work intents).
     this.repairs = new Repairs(b.components ?? [], { bus, resources: this.resources, inventory: this.inventory, time: this.time, tools: this.tools });
+    // Autonomous MARS-CLEANER rover for solar panel cleaning; independent battery and dock.
+    this.cleaner = new MaintenanceRover(b.cleaner ?? null, bus, this.power);
+    // Dynamic Mission Director for situational operational objectives.
+    this.missionDirector = new MissionDirector(bus, this.resources);
     // Real Mars-surface radiation replay (informational, no health effect). Only if the snapshot exists.
     this.radiation = data.real?.radlab
       ? new Radiation(data.real.radlab, { sep: data.real.radlab_sep ?? null, cfg: b.radiation ?? null, bus })
@@ -106,7 +112,7 @@ export class Simulation {
       lighting: circuits.lighting.drawKw,
       telecom: circuits.telecom.drawKw,
       hydro: hydro.hydro + (this.kitchen?.wants().hydro ?? 0),
-      repairBay: this.rover?.chargeKw() ?? 0,
+      repairBay: (this.rover?.chargeKw() ?? 0) + (this.cleaner?.chargeKw() ?? 0),
     };
     this.power.updateDust(dt);
     this.power.resolve(requests, clock, this.time.tick, this.solarTracker?.demandKw(clock) ?? 0);
@@ -119,6 +125,8 @@ export class Simulation {
     this.radiation?.update(clock, dt);
     this.electronics?.update(this.time.tick, dt);
     this.rover?.update(dt, this.power.served.repairBay);
+    this.cleaner?.update(dt, this.power.served.repairBay);
+    this.missionDirector?.update(this.time.tick, this);
     this.telecom.update(this.power.served.telecom, this.power.stormActive, dt);
     this.comms.update();
     this.resources.commit(dt);

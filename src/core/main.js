@@ -3,6 +3,7 @@ import { gameData } from '../data/index.js';
 import { createTranslator, pickLanguage, setNumberLanguage } from '../utils/strings.js';
 import { Game } from './Game.js';
 import { buildBasement } from '../world/Basement.js';
+import { buildMarsExterior } from '../world/MarsExterior.js';
 import { buildPorthole } from '../world/Porthole.js';
 import { buildSolarField } from '../world/SolarField.js';
 import { buildRoverWorld } from '../world/RoverWorld.js';
@@ -87,6 +88,8 @@ if (viewParam) {
 // World + stations
 const basement = buildBasement(layout, t);
 scene.add(basement.group);
+// Unified Mars exterior environment (circular terrain, sky dome, dynamic sun/lighting, rocks, particles, antenna, solar field)
+const marsExterior = buildMarsExterior(scene, () => game.sim);
 // Telecom panoramic window: the wall tagged view "telecom" (exterior lies to its -z side).
 const windowWall = layout.walls.find((/** @type {any} */ w) => w.view === 'telecom');
 const [ws0, ws1, wy0, wy1] = windowWall.windows[0];
@@ -94,7 +97,7 @@ const porthole = buildPorthole(scene, () => game.sim, {
   center: [(ws0 + ws1) / 2, (wy0 + wy1) / 2, windowWall.from[1] + 0.02],
   width: ws1 - ws0,
   height: wy1 - wy0 - 0.04,
-});
+}, marsExterior);
 // Energía window onto the solar field: the wall tagged view "solar" (exterior lies to its +x side).
 const solarWall = layout.walls.find((/** @type {any} */ w) => w.view === 'solar');
 const [ss0, ss1, sy0, sy1, sRadius = 0] = solarWall.windows[0];
@@ -104,7 +107,7 @@ const solarField = buildSolarField(scene, () => game.sim, {
   height: sy1 - sy0 - 0.04,
   radius: sRadius,
   outward: [1, 0],
-});
+}, marsExterior);
 // Hand-held objects (tools) and the two hip holsters (spec §9.3). Created before the stations so
 // room builders can use them through kit.services.
 const locomotion = new Locomotion(renderer, dolly, camera);
@@ -281,6 +284,7 @@ renderer.setAnimationLoop((timestamp) => {
   stations.animate(dt);
   porthole.update(dt);
   solarField.update(dt);
+  marsExterior.update(dt);
   roverWorld.update(dt);
 
   refreshTimer += dt;

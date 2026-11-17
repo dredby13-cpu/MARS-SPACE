@@ -17,6 +17,7 @@ function rng(seed) {
 
 /** @param {number} w @param {number} h @param {(ctx: CanvasRenderingContext2D, w: number, h: number) => void} draw */
 function canvasTexture(w, h, draw, { repeat = true } = {}) {
+  if (typeof document === 'undefined') return new THREE.Texture();
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
@@ -153,3 +154,68 @@ export function createMachineTexture() {
     for (const [x, y] of [[16, 16], [w - 16, 16], [16, h - 16], [w - 16, h - 16]]) rivet(ctx, x, y, 4);
   }, { repeat: false });
 }
+
+/**
+ * Photovoltaic solar cell module texture: dark blue monocrystalline silicon wafers,
+ * anti-reflective coating sheen, fine conductive fingers, 3 vertical silver busbars,
+ * and wafer division lines. Clean and continuous with no black seams.
+ */
+export function createSolarPanelTexture() {
+  return canvasTexture(512, 256, (ctx, w, h) => {
+    // 1. Dark navy-blue silicon substrate
+    ctx.fillStyle = '#10223e';
+    ctx.fillRect(0, 0, w, h);
+
+    // 2. Solar wafer cells: 6 columns x 3 rows of rectangular solar cells
+    const cols = 6;
+    const rows = 3;
+    const padX = 5;
+    const padY = 5;
+    const cellW = (w - padX * (cols + 1)) / cols;
+    const cellH = (h - padY * (rows + 1)) / rows;
+
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        const x = padX + c * (cellW + padX);
+        const y = padY + r * (cellH + padY);
+
+        // Wafer gradient (anti-reflective coating sheen)
+        const g = ctx.createLinearGradient(x, y, x + cellW, y + cellH);
+        g.addColorStop(0, '#1d3e75');
+        g.addColorStop(0.5, '#152d56');
+        g.addColorStop(1, '#0e1e3b');
+        ctx.fillStyle = g;
+        ctx.fillRect(x, y, cellW, cellH);
+
+        // Fine horizontal grid lines (current collectors / fingers)
+        ctx.fillStyle = 'rgba(130, 175, 235, 0.25)';
+        for (let fy = y + 4; fy < y + cellH - 2; fy += 5) {
+          ctx.fillRect(x, fy, cellW, 1);
+        }
+
+        // Wafer border bevel
+        ctx.strokeStyle = '#28508e';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, cellW - 1, cellH - 1);
+      }
+    }
+
+    // 3. Vertical busbars across all cells (3 silver conductive ribbons per column)
+    for (let c = 0; c < cols; c++) {
+      const cellLeft = padX + c * (cellW + padX);
+      for (const barFrac of [0.25, 0.5, 0.75]) {
+        const bx = cellLeft + cellW * barFrac;
+        ctx.fillStyle = '#a0bcdd';
+        ctx.fillRect(bx - 1, padY, 2, h - padY * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(bx, padY, 1, h - padY * 2);
+      }
+    }
+
+    // 4. White/grey backsheet border around panel
+    ctx.strokeStyle = '#607288';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, w - 2, h - 2);
+  }, { repeat: false });
+}
+

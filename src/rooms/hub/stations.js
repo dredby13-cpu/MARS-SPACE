@@ -91,13 +91,17 @@ export const builders = {
   hub_sources(g, _station, kit) {
     const { t } = kit;
     const panel = kit.addPanel(g, 1.15, 0.78);
-    const datasets = Object.entries(kit.game.data.real ?? {}).filter(([, d]) => d?.source?.institution);
+    const datasets = Object.entries(kit.game.data.real ?? {}).filter(([id, d]) => id !== 'donki_recent' && d?.source?.institution);
     /** @type {{ text: string, color?: string, size?: number }[]} */
     const lines = [];
     for (const [id, d] of datasets) {
       // Two rows per source (institution · site, then what it feeds): three rows pushed the list below the legible minimum.
       lines.push({ text: `${d.source.institution} · ${shortUrl(d.source.url)}`, color: COLORS.info, size: 0.85 });
       lines.push({ text: t(`hub.sources.use.${id}`), size: 0.78 });
+    }
+    if (kit.game.data.real?.escenarios_nasa) {
+      lines.push({ text: 'NASA CCMC · DONKI', color: COLORS.info, size: 0.85 });
+      lines.push({ text: t('hub.sources.use.escenarios_nasa'), size: 0.78 });
     }
     if (datasets.length === 0) lines.push({ text: t('hub.sources.none'), color: COLORS.warning });
     const latest = datasets.map(([, d]) => String(d.source.retrievedAt)).sort().pop();

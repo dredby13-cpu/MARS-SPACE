@@ -1,110 +1,191 @@
 // OWNER: Persona A (Personal · Hidro · Hub) — see docs/COLLABORATION.md
-//
-// NASA DONKI space weather, LIVE from the browser (api.nasa.gov allows CORS), with an honest
-// fallback to the embedded snapshot src/data/real/donki_recent.json when there is no network.
-// Presentation-only: it never feeds the simulation (the game keeps working offline / on the Quest).
-// The UI must say "EN VIVO" only when `state.status === 'live'`.
+// Historical DONKI scenarios for presentation only. This module never makes network requests.
 
-export const DONKI_BASE = 'https://api.nasa.gov/DONKI/';
+export const SCENARIO_KEYS = Object.freeze({
+  '1': 'calmado',
+  '2': 'moderado',
+  '3': 'extremo',
+});
+
+const SCENARIO_IDS = Object.values(SCENARIO_KEYS);
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Last `days` days ending today, as YYYY-MM-DD. @param {number} days @param {Date} now */
-export function dateRange(days, now) {
-  const iso = (/** @type {Date} */ d) => d.toISOString().slice(0, 10);
-  return { start: iso(new Date(now.getTime() - days * DAY_MS)), end: iso(now) };
-}
+const replayByGame = new WeakMap();
 
 /**
- * Kid-sized summary of DONKI events.
- * @param {{ cme?: any[], gst?: any[], sep?: any[] }} raw
+ * Presentation-only replay of embedded DONKI scenario data.
+ * @param {Record<string, any>} scenarios
  */
-export function summarizeDonki({ cme = [], gst = [], sep = [] }) {
-  const speeds = cme.flatMap((e) => (e.cmeAnalyses ?? []).map((/** @type {any} */ a) => Number(a.speed))).filter((v) => Number.isFinite(v) && v > 0);
-  const kps = gst.flatMap((e) => (e.allKpIndex ?? []).map((/** @type {any} */ k) => Number(k.kpIndex))).filter(Number.isFinite);
-  return {
-    cmeCount: cme.length,
-    fastestCmeKms: speeds.length ? Math.round(Math.max(...speeds)) : null,
-    gstCount: gst.length,
-    maxKp: kps.length ? Math.max(...kps) : null,
-    sepCount: sep.length,
-  };
-}
-
-/**
- * @param {{ apiKey?: string, days?: number, fallback?: any, fetchImpl?: typeof fetch, now?: () => Date, timeoutMs?: number, refreshMs?: number }} opts
- */
-export function createSpaceWeatherFeed({
-  apiKey = 'DEMO_KEY',
-  days = 7,
-  fallback = null,
-  fetchImpl = globalThis.fetch?.bind(globalThis),
-  now = () => new Date(),
-  timeoutMs = 10_000,
-  refreshMs = 30 * 60 * 1000,
-} = {}) {
-  /** @type {{ status: 'loading' | 'live' | 'snapshot' | 'unavailable', summary: ReturnType<typeof summarizeDonki> | null, range: { start: string, end: string } | null, fetchedAt: Date | null, retrievedAt: string | null, error: string | null }} */
-  const state = {
-    status: fallback ? 'snapshot' : 'loading',
-    summary: fallback?.summary ?? null,
-    range: fallback?.range ?? null,
-    fetchedAt: null,
-    retrievedAt: fallback?.source?.retrievedAt ?? null,
-    error: null,
-  };
-  /** @type {ReturnType<typeof setInterval> | null} */
-  let timer = null;
-
-  async function getJson(/** @type {string} */ type, /** @type {{ start: string, end: string }} */ range) {
-    const url = `${DONKI_BASE}${type}?startDate=${range.start}&endDate=${range.end}&api_key=${encodeURIComponent(apiKey)}`;
-    const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-      const res = await fetchImpl(url, { signal: ctrl.signal });
-      if (!res.ok) throw new Error(`${type}: HTTP ${res.status}`);
-      const body = await res.json();
-      return Array.isArray(body) ? body : [];
-    } finally {
-      clearTimeout(to);
-    }
+export function createNasaScenarioReplay(scenarios) {
+  for (const id of SCENARIO_IDS) {
+    if (!scenarios?.[id]) throw new Error(`Missing NASA scenario: ${id}`);
   }
 
-  /** One live attempt. On failure keeps (or shows) the snapshot and records the error. */
-  async function refresh() {
-    if (!fetchImpl) {
-      state.error = 'fetch unavailable';
-      if (!fallback) state.status = 'unavailable';
-      return state;
-    }
-    const range = dateRange(days, now());
-    try {
-      const [cme, gst, sep] = await Promise.all([getJson('CME', range), getJson('GST', range), getJson('SEP', range)]);
-      state.summary = summarizeDonki({ cme, gst, sep });
-      state.range = range;
-      state.status = 'live';
-      state.fetchedAt = now();
-      state.error = null;
-    } catch (e) {
-      state.error = e instanceof Error ? e.message : String(e);
-      if (state.status !== 'live') state.status = fallback ? 'snapshot' : 'unavailable';
-      if (state.status === 'snapshot') {
-        state.summary = fallback.summary;
-        state.range = fallback.range;
+  /** @type {{ day: number, hour: number, minute: number }} */
+  let clock = { day: 1, hour: 6, minute: 0 };
+  /** @type {string | null} */
+  let manualId = null;
+  /** @type {number | null} */
+  let manualStartDay = null;
+  /** @type {Set<() => void>} */
+  const listeners = new Set();
+
+  const stageId = (day) => SCENARIO_IDS.find((id) => {
+    const stage = scenarios[id].etapaJuego;
+    return stage && day >= stage.diaInicio && day <= stage.diaFin;
+  }) ?? (day > scenarios.extremo.etapaJuego.diaFin ? 'extremo' : 'calmado');
+
+  const activeId = () => {
+    const scheduled = stageId(clock.day);
+    if (manualId && manualStartDay !== null && stageId(manualStartDay) === scheduled) return manualId;
+    return scheduled;
+  };
+
+  const notify = () => {
+    for (const listener of listeners) listener();
+  };
+
+  return {
+    get activeId() {
+      return activeId();
+    },
+    /** @param {{ day: number, hour: number, minute: number }} next */
+    syncClock(next) {
+      if (![next.day, next.hour, next.minute].every(Number.isFinite)) {
+        throw new TypeError('Scenario replay clock must contain finite day, hour and minute values');
+      }
+      const before = activeId();
+      clock = { day: next.day, hour: next.hour, minute: next.minute };
+      if (manualId && manualStartDay !== null && stageId(manualStartDay) !== stageId(clock.day)) {
+        manualId = null;
+        manualStartDay = null;
+      }
+      if (before !== activeId()) notify();
+    },
+    /** @param {string} id */
+    select(id) {
+      if (!SCENARIO_IDS.includes(id) || !scenarios[id]) return false;
+      manualId = id;
+      manualStartDay = clock.day;
+      notify();
+      return true;
+    },
+    /** @param {() => void} listener */
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    getSnapshot() {
+      const id = activeId();
+      const scenario = scenarios[id];
+      const startDay = manualId && manualStartDay !== null && stageId(manualStartDay) === stageId(clock.day)
+        ? manualStartDay
+        : scenario.etapaJuego?.diaInicio ?? clock.day;
+      return snapshotAt(id, scenario, clock, startDay);
+    },
+  };
+}
+
+/**
+ * One selector and one set of keyboard handlers per Game instance.
+ * @param {object} game @param {Record<string, any>} scenarios @param {() => void} onChange
+ */
+export function getNasaScenarioReplay(game, scenarios, onChange) {
+  let replay = replayByGame.get(game);
+  if (!replay) {
+    replay = createNasaScenarioReplay(scenarios);
+    replay.subscribe(onChange);
+    installScenarioHotkeys(replay);
+    replayByGame.set(game, replay);
+  }
+  return replay;
+}
+
+/**
+ * Register the 1/2/3 presentation shortcuts. @param {ReturnType<typeof createNasaScenarioReplay>} replay
+ * @param {{ addEventListener: Function, removeEventListener: Function }} [target]
+ */
+export function installScenarioHotkeys(replay, target = globalThis.window) {
+  if (!target?.addEventListener) return () => {};
+  const onKeyDown = (/** @type {KeyboardEvent} */ event) => {
+    if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
+    const element = /** @type {HTMLElement | null} */ (
+      typeof HTMLElement !== 'undefined' && event.target instanceof HTMLElement ? event.target : null
+    );
+    if (element?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(element?.tagName ?? '')) return;
+    const scenarioId = SCENARIO_KEYS[event.key];
+    if (scenarioId && replay.select(scenarioId)) event.preventDefault();
+  };
+  target.addEventListener('keydown', onKeyDown);
+  return () => target.removeEventListener('keydown', onKeyDown);
+}
+
+/** @param {string} id @param {Record<string, any>} scenario @param {{ day: number, hour: number, minute: number }} clock @param {number} playbackStartDay */
+function snapshotAt(id, scenario, clock, playbackStartDay) {
+  const firstDate = scenario.fechaReal;
+  const lastDate = scenario.fechaFin ?? firstDate;
+  const elapsedDays = Math.max(0, Math.floor(clock.day - playbackStartDay));
+  const wantedDate = addDays(firstDate, elapsedDays);
+  const cappedDate = wantedDate > lastDate ? lastDate : wantedDate;
+  const afterScenario = wantedDate > lastDate;
+  const hour = String(Math.max(0, Math.min(23, Math.floor(clock.hour)))).padStart(2, '0');
+  const minute = String(Math.max(0, Math.min(59, Math.floor(clock.minute)))).padStart(2, '0');
+  const timestamp = afterScenario
+    ? `${lastDate}T23:59:59Z`
+    : `${cappedDate}T${hour}:${minute}:00Z`;
+  const timestampMs = Date.parse(timestamp);
+  const detailed = scenario.eventosDetallados;
+  const collections = [
+    ['cme', detailed.nubesParticulas, (event) => event.startTime],
+    ['gst', detailed.tormentasMagneticas, (event) => event.startTime],
+    ['sep', detailed.lluviasParticulas, (event) => event.eventTime],
+    ['flr', detailed.llamaradasSolares, (event) => event.beginTime],
+  ];
+  /** @type {{ type: string, time: string, data: any }[]} */
+  const timeline = [];
+  const summary = { cmeCount: 0, gstCount: 0, sepCount: 0, flrCount: 0, maxKp: null };
+  const countKeys = { cme: 'cmeCount', gst: 'gstCount', sep: 'sepCount', flr: 'flrCount' };
+
+  for (const [type, events, getTime] of collections) {
+    const reached = (events ?? []).filter((event) => {
+      const time = eventTime(getTime(event));
+      return Number.isFinite(time) && time <= timestampMs;
+    });
+    summary[countKeys[type]] = reached.length;
+    for (const event of reached) timeline.push({ type, time: getTime(event), data: event });
+  }
+  for (const storm of detailed.tormentasMagneticas ?? []) {
+    for (const observation of storm.observations ?? []) {
+      if (eventTime(observation.observedTime) <= timestampMs && Number.isFinite(observation.kpIndex)) {
+        summary.maxKp = summary.maxKp === null ? observation.kpIndex : Math.max(summary.maxKp, observation.kpIndex);
       }
     }
-    return state;
   }
 
+  timeline.sort((a, b) => a.time.localeCompare(b.time));
   return {
-    state,
-    refresh,
-    /** Starts the first request and the periodic refresh (browser only). */
-    start() {
-      refresh();
-      timer ??= setInterval(refresh, refreshMs);
-    },
-    stop() {
-      if (timer) clearInterval(timer);
-      timer = null;
-    },
+    id,
+    scenario,
+    timestamp,
+    sourceDate: cappedDate,
+    counts: summary,
+    latestEvent: timeline.at(-1) ?? null,
+    nextEvent: collections
+      .flatMap(([type, events, getTime]) => (events ?? [])
+        .filter((event) => {
+          const time = eventTime(getTime(event));
+          return Number.isFinite(time) && time > timestampMs;
+        })
+        .map((event) => ({ type, time: getTime(event), data: event })))
+      .sort((a, b) => a.time.localeCompare(b.time))[0] ?? null,
   };
+}
+
+function eventTime(value) {
+  return typeof value === 'string' ? Date.parse(value) : Number.NaN;
+}
+
+function addDays(isoDate, days) {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  date.setTime(date.getTime() + days * DAY_MS);
+  return date.toISOString().slice(0, 10);
 }

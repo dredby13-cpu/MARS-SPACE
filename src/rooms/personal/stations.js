@@ -1,6 +1,6 @@
 // OWNER: Persona A (Personal · Hidro · Hub) — see docs/COLLABORATION.md
 // Personal: crew quarters right next to the Sala central (no corridor), radiation storm shelter,
-// real-data dosimeter (NASA OSDR RadLab, MSL RAD), «El Sol ahora» (NASA DONKI) and astronaut health (NASA OSDR).
+// real-data dosimeter (NASA OSDR RadLab, MSL RAD), historical DONKI replay, and astronaut health (NASA OSDR).
 // Panels are pictograms (personalIcons.js) for young players; each has an «Info» button that opens the
 // rigorous text with numbers and sources (src/ui/InfoSheet.js).
 // Placement: src/data/stations/personal.json · Texts: src/data/strings/es/personal.json
@@ -13,7 +13,7 @@ import { COLORS } from '../../ui/StationKit.js';
 import { Panel } from '../../ui/Panel.js';
 import { fmt } from '../../utils/strings.js';
 import { addInfo } from '../../ui/InfoSheet.js';
-import { createSpaceWeatherFeed } from './spaceWeatherLive.js';
+import { getNasaScenarioReplay } from './spaceWeatherLive.js';
 import * as icon from './personalIcons.js';
 import { insideAlcove, TANK_RADIUS } from './shelterRules.js';
 
@@ -82,7 +82,7 @@ export const builders = {
       const c = sim().time.clock();
       const minute = c.hour * 60 + c.minute;
       const key = `${r.rate.toFixed(2)}|${Math.floor(minute / 10)}`;
-      panel.renderCustom(key, (ctx, W, H) => drawDosimeter(ctx, W, H, { t, r, minute }));
+      panel.renderCustom(key, (ctx, W, H) => drawDosimeter(ctx, W, H, { t, r, minute, date: radlab.day }));
     });
   },
 
@@ -210,66 +210,55 @@ export const builders = {
     kit.addBox(g, 0.8, 1.9, 0.5, 0, 0.95 - station.y, 0.25, '#56606b');
   },
 
-  /**
-   * "El Sol ahora": NASA DONKI space weather, LIVE when the browser can reach api.nasa.gov,
-   * otherwise the embedded snapshot — and the panel always says which one it is (pill in the corner).
-   */
+  /** Historical NASA DONKI activity, replayed locally in sync with the game clock. */
   personal_spaceweather(g, _station, kit) {
-    const { t } = kit;
-    const fallback = kit.game.data.real?.donki_recent ?? null;
-    const apiKey = import.meta.env?.VITE_NASA_API_KEY || 'DEMO_KEY';
-    const feed = createSpaceWeatherFeed({ apiKey, fallback });
-    feed.start();
+    const { t, sim } = kit;
+    const scenarios = kit.game.data.real?.escenarios_nasa;
     const panel = new Panel(0.95, 0.72, { pxPerMeter: 520 });
     g.add(panel.mesh);
+    if (!scenarios) {
+      panel.renderLines(t('personal.sun.info_title'), [{ text: t('personal.sun.unavailable'), color: COLORS.warning }]);
+      return;
+    }
+    const replay = getNasaScenarioReplay(kit.game, scenarios, () => kit._refreshAll());
 
     addInfo(g, kit, {
       bx: 0, by: -0.43, px: 0, py: 0.05, w: 1.3, h: 0.95,
       title: () => t('personal.sun.info_title'),
       lines: () => {
-        const st = feed.state;
-        const s = st.summary;
-        /** @type {Line[]} */
-        const lines = [statusLine(st, t)];
-        if (s) {
-          lines.push({ text: t('personal.sun.cme', { n: s.cmeCount }), size: 0.82 });
-          if (s.fastestCmeKms) lines.push({ text: t('personal.sun.fastest', { kms: s.fastestCmeKms }), size: 0.82 });
-          lines.push({ text: t('personal.sun.storms', { n: s.gstCount, sep: s.sepCount }), size: 0.82 });
-        }
-        lines.push({ text: t('personal.sun.explain'), size: 0.8 });
-        lines.push({ text: t('personal.sun.info_gst'), size: 0.78 });
-        lines.push({ text: t('personal.sun.info_sep'), size: 0.78 });
-        lines.push({ text: t('personal.sun.source'), color: COLORS.dim, size: 0.7 });
-        return lines;
+        replay.syncClock(sim().time.clock());
+        return nasaScenarioInfoLines(replay.getSnapshot(), t);
       },
     });
 
     kit.onRefresh(() => {
-      const st = feed.state;
-      const s = st.summary;
-      const pill = { live: COLORS.nominal, snapshot: COLORS.warning, loading: COLORS.dim, unavailable: COLORS.critical }[st.status];
-      const key = [st.status, s?.cmeCount, s?.gstCount, s?.sepCount].join('|');
+      replay.syncClock(sim().time.clock());
+      const state = replay.getSnapshot();
+      const { counts } = state;
+      const dateTime = state.timestamp.slice(11, 16);
+      const key = [state.id, state.timestamp, ...Object.values(counts)].join('|');
+      const stageColor = state.id === 'extremo' ? COLORS.critical
+        : state.id === 'moderado' ? COLORS.warning : COLORS.nominal;
       panel.renderCustom(key, (ctx, W, H) => {
-        icon.frame(ctx, W, H, st.status === 'live' ? COLORS.nominal : COLORS.border);
+        icon.frame(ctx, W, H, stageColor);
         icon.text(ctx, t('personal.sun.short_title'), W * 0.05, H * 0.1, { size: H * 0.085, color: COLORS.title, bold: true });
-        // Live / snapshot pill.
-        const label = t(`personal.sun.pill.${st.status}`);
-        icon.tile(ctx, W * 0.64, H * 0.04, W * 0.32, H * 0.11, '#11161c', pill, 4);
-        icon.text(ctx, label, W * 0.8, H * 0.1, { size: H * 0.06, color: pill, bold: true, align: 'center', maxWidth: W * 0.28 });
-        icon.sun(ctx, W * 0.17, H * 0.47, H * 0.14, Boolean(s && s.sepCount > 0));
-        /** @type {[(c: CanvasRenderingContext2D, x: number, y: number, r: number) => void, string, number | undefined][]} */
+        icon.tile(ctx, W * 0.64, H * 0.04, W * 0.32, H * 0.11, '#11161c', stageColor, 4);
+        icon.text(ctx, t(`personal.sun.scenario.${state.id}`), W * 0.8, H * 0.1, { size: H * 0.055, color: stageColor, bold: true, align: 'center', maxWidth: W * 0.28 });
+        icon.sun(ctx, W * 0.17, H * 0.48, H * 0.14, counts.sepCount > 0 || counts.maxKp >= 8);
+        /** @type {[(c: CanvasRenderingContext2D, x: number, y: number, r: number) => void, string, number][]} */
         const rows = [
-          [(c, x, y, r) => icon.cloud(c, x, y, r), 'personal.sun.cme_short', s?.cmeCount],
-          [(c, x, y, r) => icon.magnet(c, x, y, r), 'personal.sun.gst_short', s?.gstCount],
-          [(c, x, y, r) => icon.particles(c, x, y, r), 'personal.sun.sep_short', s?.sepCount],
+          [(c, x, y, r) => icon.cloud(c, x, y, r), 'personal.sun.cme_short', counts.cmeCount],
+          [(c, x, y, r) => icon.magnet(c, x, y, r), 'personal.sun.gst_short', counts.gstCount],
+          [(c, x, y, r) => icon.particles(c, x, y, r), 'personal.sun.sep_short', counts.sepCount],
+          [(c, x, y, r) => icon.sun(c, x, y, r), 'personal.sun.flr_short', counts.flrCount],
         ];
-        rows.forEach(([draw, key2, n], i) => {
-          const y = H * (0.3 + i * 0.18);
-          draw(ctx, W * 0.42, y, H * 0.065);
-          icon.text(ctx, n === undefined ? '—' : String(n), W * 0.53, y, { size: H * 0.1, bold: true });
-          icon.text(ctx, t(key2), W * 0.6, y, { size: H * 0.066, maxWidth: W * 0.37 });
+        rows.forEach(([draw, key2, count], i) => {
+          const y = H * (0.27 + i * 0.15);
+          draw(ctx, W * 0.39, y, H * 0.055);
+          icon.text(ctx, String(count), W * 0.49, y, { size: H * 0.085, bold: true, color: count ? COLORS.info : COLORS.dim });
+          icon.text(ctx, t(key2), W * 0.59, y, { size: H * 0.06, maxWidth: W * 0.38 });
         });
-        icon.text(ctx, t('personal.sun.week'), W / 2, H * 0.88, { size: H * 0.06, color: COLORS.dim, align: 'center' });
+        icon.text(ctx, `${state.sourceDate} · ${dateTime} UTC`, W / 2, H * 0.92, { size: H * 0.055, color: COLORS.dim, align: 'center' });
       });
     });
   },
@@ -322,23 +311,56 @@ export const builders = {
   },
 };
 
-/** Live / snapshot / unavailable line for the Info sheet (the panel itself shows a pill). @param {any} st @param {Function} t @returns {Line} */
-function statusLine(st, t) {
-  if (st.status === 'live') {
-    const time = st.fetchedAt ? `${String(st.fetchedAt.getHours()).padStart(2, '0')}:${String(st.fetchedAt.getMinutes()).padStart(2, '0')}` : '';
-    return { text: t('personal.sun.live', { time }), color: COLORS.nominal, size: 0.82 };
+/** @param {any} state @param {Function} t @returns {Line[]} */
+function nasaScenarioInfoLines(state, t) {
+  const { scenario, counts } = state;
+  const start = formatDay(scenario.fechaReal);
+  const end = formatDay(scenario.fechaFin ?? scenario.fechaReal);
+  const range = start === end ? start : `${start}–${end}`;
+  const stage = scenario.etapaJuego;
+  /** @type {Line[]} */
+  const lines = [
+    { text: t('personal.sun.attribution', { source: scenario.fuenteOficial, date: range }), color: COLORS.info, size: 0.78 },
+    { text: t('personal.sun.current', { ...counts, maxKp: counts.maxKp ?? '—' }), size: 0.8 },
+    { text: t('personal.sun.total', scenario.summary), size: 0.76 },
+  ];
+  if (state.latestEvent) {
+    lines.push({ text: t('personal.sun.latest', { event: describeHistoricalEvent(state.latestEvent, t) }), size: 0.76 });
+  } else {
+    lines.push({ text: t('personal.sun.no_event'), color: COLORS.dim, size: 0.76 });
   }
-  if (st.status === 'snapshot') return { text: t('personal.sun.snapshot', { date: formatDay(st.retrievedAt ?? '') }), color: COLORS.warning, size: 0.82 };
-  return { text: t('personal.sun.unavailable'), color: COLORS.warning, size: 0.82 };
+  if (state.nextEvent) {
+    lines.push({ text: t('personal.sun.next', { event: describeHistoricalEvent(state.nextEvent, t) }), color: COLORS.warning, size: 0.76 });
+  }
+  lines.push(
+    { text: t('personal.sun.schedule', { start: stage.diaInicio, end: stage.diaFin }), size: 0.74 },
+    { text: t('personal.sun.controls'), size: 0.74 },
+    { text: t('personal.sun.visual_only'), color: COLORS.dim, size: 0.72 },
+    { text: t('personal.sun.source_url'), color: COLORS.dim, size: 0.68 },
+  );
+  return lines;
+}
+
+/** @param {{ type: string, time: string, data: any }} event @param {Function} t */
+function describeHistoricalEvent(event, t) {
+  let detail = '';
+  if (event.type === 'cme' && event.data.speedKms !== null) detail = `${Math.round(event.data.speedKms)} km/s`;
+  if (event.type === 'flr') detail = event.data.classType ?? '';
+  if (event.type === 'gst') {
+    const kp = event.data.observations?.map((/** @type {any} */ item) => item.kpIndex).filter(Number.isFinite) ?? [];
+    if (kp.length) detail = `Kp ${Math.max(...kp)}`;
+  }
+  if (event.type === 'sep') detail = `${event.data.instruments?.length ?? 0} instrumentos`;
+  return `${t(`personal.sun.event.${event.type}`, { detail })} · ${event.time.replace('T', ' ').replace('Z', ' UTC')}`;
 }
 
 /**
  * Dosimeter face for young players: big current rate, Mars vs ISS bars, the real 24 h record with a "now"
  * marker, and one short line. Numbers and sources are in the Info sheet.
  * @param {CanvasRenderingContext2D} ctx @param {number} W @param {number} H
- * @param {{ t: Function, r: any, minute: number }} p
+ * @param {{ t: Function, r: any, minute: number, date: string }} p
  */
-function drawDosimeter(ctx, W, H, { t, r, minute }) {
+function drawDosimeter(ctx, W, H, { t, r, minute, date }) {
   const pad = W * 0.04;
   icon.frame(ctx, W, H);
   icon.text(ctx, t('personal.dosimeter.short_title'), pad, H * 0.08, { size: H * 0.075, color: COLORS.title, bold: true });
@@ -382,7 +404,7 @@ function drawDosimeter(ctx, W, H, { t, r, minute }) {
   ctx.moveTo(px(minute), cy);
   ctx.lineTo(px(minute), cy + ch);
   ctx.stroke();
-  icon.text(ctx, t('personal.dosimeter.today'), cx + cw - 6, cy + H * 0.035, { size: H * 0.042, color: COLORS.dim, align: 'right' });
+  icon.text(ctx, t('personal.dosimeter.today', { date: formatDay(date) }), cx + cw - 6, cy + H * 0.035, { size: H * 0.042, color: COLORS.dim, align: 'right' });
 
   // One short, reassuring line.
   icon.buriedBase(ctx, pad + H * 0.08, H * 0.86, H * 0.07);

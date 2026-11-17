@@ -98,6 +98,22 @@ export class PowerGrid {
     this.bus.emit('solar:cleaned', { by: 'devil', gained, kwh: 0 });
   }
 
+  /**
+   * Cleans a fractional portion of the solar field (e.g. 1 of 12 panels by MARS-CLEANER).
+   * @param {number} fraction fraction of total panel surface cleaned (0..1)
+   * @param {number} [cleanQuality] effectiveness multiplier (default 0.95)
+   */
+  cleanPanelPortion(fraction, cleanQuality = 0.95) {
+    const d = this.dustCfg;
+    if (!d || fraction <= 0) return 0;
+    const dustToClear = (1 - this.dustFactor) * fraction * cleanQuality;
+    if (dustToClear > 0) {
+      this.#setDust(this.dustFactor + dustToClear);
+      this.bus.emit('solar:cleaned', { by: 'cleaner_rover', gained: dustToClear, kwh: 0 });
+    }
+    return dustToClear;
+  }
+
   /** @param {number} f */
   #setDust(f) {
     this.dustFactor = Math.min(1, Math.max(this.dustCfg?.minFactor ?? 0, f));

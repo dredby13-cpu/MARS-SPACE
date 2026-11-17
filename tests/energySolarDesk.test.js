@@ -15,6 +15,7 @@ describe('Energía solar desk', () => {
     expect(batteryCharge({ value: 40, max: 40, ratePerHour: 0.5 }, t).key).toBe('full');
     expect(batteryCharge({ value: 20, max: 40, ratePerHour: 0 }, t).key).toBe('idle');
   });
+
 });
 
 describe('AUTO sun tracking from the solar desk', () => {

@@ -77,6 +77,7 @@
   "hub.sources.use.orbits": "Orbits of Earth and Mars (NASA/JPL) → real message delay (Telecom)",
   "hub.sources.use.radlab_sep": "Real solar storm of 20/05/2024 measured by Curiosity (RAD) → alert and shelter (Crew quarters)",
   "hub.sources.use.solar_dust": "Dust measured by Mars Pathfinder (0.28 % per sol) → solar panels (Power)",
+  "hub.sources.use.escenarios_nasa": "Three historical scenarios with CME, GST, SEP and flare counts and events → Solar history (Crew quarters)",
   "hub.elec.btn.scan": "Scan",
   "hub.elec.scope.good": "✔ SMOOTH WAVE",
   "hub.elec.scope.bad": "✖ SPIKY WAVE",

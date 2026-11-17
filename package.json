@@ -17,6 +17,7 @@
     "data:radlab": "node scripts/fetch-radlab.js",
     "data:osdr": "node scripts/fetch-osdr.js",
     "data:donki": "node scripts/fetch-donki.js",
+    "data:escenarios": "node scripts/fetch-nasa-scenarios.js",
     "data:roverphotos": "node scripts/fetch-rover-photos.js",
     "data:radlab:sep": "node scripts/fetch-radlab.js 2024-05-20 --days 3 --out radlab_sep"
   },

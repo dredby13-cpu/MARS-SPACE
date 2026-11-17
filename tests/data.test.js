@@ -38,6 +38,30 @@ describe('Per-owner data files', () => {
     const real = Object.entries(gameData.real ?? {});
     expect(real.length).toBeGreaterThan(0);
     for (const [id, d] of real) {
+      if (id === 'escenarios_nasa') {
+        expect(gameData.strings[`hub.sources.use.${id}`], `hub.sources.use.${id}`).toBeDefined();
+        for (const [scenarioId, scenario] of Object.entries(d)) {
+          expect(scenario.fuenteOficial, `${scenarioId}.fuenteOficial`).toMatch(/NASA.*DONKI/);
+          expect(scenario.urlFuente, `${scenarioId}.urlFuente`).toMatch(/^https:\/\/ccmc\.gsfc\.nasa\.gov\//);
+          expect(scenario.fechaReal, `${scenarioId}.fechaReal`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+          expect(scenario.etapaJuego.diaInicio).toBeGreaterThan(0);
+          expect(scenario.etapaJuego.diaFin).toBeGreaterThanOrEqual(scenario.etapaJuego.diaInicio);
+          expect(scenario.summary).toMatchObject({
+            cmeCount: scenario.eventosDetallados.nubesParticulas.length,
+            gstCount: scenario.eventosDetallados.tormentasMagneticas.length,
+            sepCount: scenario.eventosDetallados.lluviasParticulas.length,
+            flrCount: scenario.eventosDetallados.llamaradasSolares.length,
+          });
+          for (const events of Object.values(scenario.eventosDetallados)) {
+            for (const event of events) expect(event.link).toMatch(/^https:\/\/ccmc\.gsfc\.nasa\.gov\/DONKI\/view\//);
+          }
+        }
+        expect(d.calmado.fechaReal).toBe('2020-01-01');
+        expect(d.moderado.summary).toMatchObject({ cmeCount: 1, gstCount: 0, sepCount: 0, flrCount: 2 });
+        expect(d.extremo.fechaReal).toBe('2024-05-10');
+        expect(d.extremo.summary).toMatchObject({ cmeCount: 14, gstCount: 2, sepCount: 6, flrCount: 38, maxKp: 9 });
+        continue;
+      }
       expect(d.source?.url, `${id}.source.url`).toMatch(/^https:\/\//);
       expect(d.source?.retrievedAt, `${id}.source.retrievedAt`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(gameData.strings[`hub.sources.use.${id}`], `hub.sources.use.${id}`).toBeDefined();
